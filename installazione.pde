@@ -6,6 +6,7 @@ import java.lang.Math.*;
 import java.util.Arrays;
 
 boolean DEBUG = true;
+int[] kinectAdjustmentOffset = {0, -350};
 
 // video to mask
 Movie video;
@@ -68,9 +69,10 @@ void draw() {
     // Mask the video with Kinect depth data
     video.loadPixels();
     depthImage.loadPixels();
+    var currentKinectAdjustmentOffset = Arrays.copyOf(kinectAdjustmentOffset, kinectAdjustmentOffset.length);
     for(int y = 0; y < video.height; y++) {
       for(int x = 0; x < video.width; x++) {
-        var depth = hue(depthImage.pixels[y * depthImage.width + x]);
+        var depth = hue(depthImage.pixels[(y - currentKinectAdjustmentOffset[1]) * depthImage.width + (x - currentKinectAdjustmentOffset[0])]);
         if (depth > depthThreshold) {
           video.pixels[y * video.width + x] = color(0);
         }
@@ -87,13 +89,15 @@ void draw() {
   if (DEBUG) {
     stroke(0xFF4281A4);
     fill(0xFF4281A4);
-    rect(0, 0, 260, 140);
+    rect(0, 0, 330, 170);
     fill(255);
     text(
       "Video resolution: " + video.width + "x" + video.height + "\n" +
       "Video resolution: " + kinect.width + "x" + kinect.height + "\n" +
-      "Video/Kinect ratio: " + videoKinectScale + "\n" +
-      "Depth threshold: " + depthThreshold + "\n",
+      "Video/Kinect scale [s]: " + videoKinectScale + "\n" +
+      "Depth threshold [d]: " + depthThreshold + "\n" +
+      "Kinect adjustment offset [k]: " + Arrays.toString(kinectAdjustmentOffset) + "\n" +
+      "This informations panel can be toggled with [i].",
       10,
       20
     );
@@ -102,6 +106,7 @@ void draw() {
 
 enum ConfigurationMode {
   DEPTH_THRESHOLD,
+  KINECT_ADJUSTMENT_OFFSET,
   VIDEO_KINECT_SCALE
 }
 ConfigurationMode configurationMode = null;
@@ -113,6 +118,9 @@ void keyPressed() {
       break;
     case 'd':
       configurationMode = ConfigurationMode.DEPTH_THRESHOLD;
+      break;
+    case 'k':
+      configurationMode = ConfigurationMode.KINECT_ADJUSTMENT_OFFSET;
       break;
     case 's':
       configurationMode = ConfigurationMode.VIDEO_KINECT_SCALE;
@@ -130,6 +138,18 @@ void keyPressed() {
       var newVideoKinectScale = ceil((videoKinectScale + (keyCode == UP ? 0.1 : -0.1)) * 10) / 10.0f;
       if (minimuVideoKinectScale <= newVideoKinectScale) {
         videoKinectScale = newVideoKinectScale;
+      }
+    }
+  } else if (configurationMode == ConfigurationMode.KINECT_ADJUSTMENT_OFFSET) {
+    if ((keyCode == LEFT || keyCode == RIGHT)) {
+      var newValue = kinectAdjustmentOffset[0] + (keyCode == LEFT ? -1 : 1);
+      if(newValue <= 0 && video.width - kinect.width * videoKinectScale + newValue > 0) {
+        kinectAdjustmentOffset[0] = newValue;
+      }
+    } else if ((keyCode == UP || keyCode == DOWN)) {
+      var newValue = kinectAdjustmentOffset[1] + (keyCode == UP ? -1 : 1);
+      if(newValue <= 0 && video.height - kinect.height * videoKinectScale + newValue > 0) {
+        kinectAdjustmentOffset[1] = newValue;
       }
     }
   }
