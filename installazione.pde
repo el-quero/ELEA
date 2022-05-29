@@ -3,7 +3,7 @@ import org.openkinect.freenect.*;
 import org.openkinect.processing.*;
 import com.sun.jna.*;
 
-final boolean DEBUG = true;
+boolean DEBUG = true;
 
 Movie video;
 Kinect kinect;
@@ -50,7 +50,7 @@ void draw() {
     
     // scale and crop it to fit video size without distorsions
     depthImage.resize((int) (kinect.width * videoKinectRatio), (int) (kinect.height * videoKinectRatio));
-    depthImage = depthImage.get(depthImage.width / 2 - video.width/2, depthImage.height / 2 - video.height/2, video.width, video.height);
+    depthImage = depthImage.get(depthImage.width / 2 - video.width/2 - 30, depthImage.height / 2 - video.height/2, video.width, video.height);
     //if (video.width != depthImage.width || video.height != depthImage.height) {
       //exit();
     //}
@@ -95,7 +95,9 @@ void keyPressed() {
     } else if (keyCode == DOWN) {
       depthThreshold--;
     }
-  }
+  } else if (key == 'd') {
+    DEBUG = !DEBUG;
+  } 
 }
 
 void exit(final String errorMessage) {
