@@ -1,49 +1,49 @@
 import processing.video.*;
-import org.openkinect.freenect.*;
-import org.openkinect.processing.*;
+import KinectPV2.*;
 import com.sun.jna.*;
 import java.lang.Math.*;
 import java.util.Arrays;
 
 boolean DEBUG = true;
-int[] kinectAdjustmentOffset = {0, -350};
 
 // video to mask
 Movie video;
 
 // Kinect device
-Kinect kinect;
-
-volatile int depthThreshold;
+KinectPV2 kinect;
+volatile int depthThreshold = 3000; // 1000 = 1m
+int depthThresholdDelta = 100;
+int[] kinectAdjustmentOffset = {0, 0};
 
 // ratio of Kinect depth camera video size on bacgrkound video size.
 // (> 1 = Kinect is smaller; < 1 = video is smaller)
 float videoKinectScale;
-float minimuVideoKinectScale;
+float minimumVideoKinectScale;
 
 void setup() {
   fullScreen();
-  textSize(16);
-  fill(255);
-  
+  //size(1920, 1080);
+
   // setup Kinect
-  kinect = new Kinect(this);
-  kinect.initDepth();
-  kinect.enableColorDepth(true);
-  depthThreshold = 110;
+  kinect = new KinectPV2(this);
+  kinect.enableDepthImg(true);
+  kinect.enablePointCloud(true);
+  kinect.setLowThresholdPC(0);
+  kinect.setHighThresholdPC(depthThreshold);
+  kinect.init();
   
   // setup video
-  video = new Movie(this, "background.mp4");
+  video = new Movie(this, "background.mov");
   video.loop();
   video.read();
   
-  // calculating ratio between video resolution and Kinect depth camera resolution
-  if(video.height - kinect.height >= video.width - kinect.width) {
-    videoKinectScale = video.height / kinect.height;
+  // calculating ratio between video and Kinect depth camera resolutions
+  if(video.height - KinectPV2.HEIGHTDepth >= video.width - KinectPV2.WIDTHDepth) {
+    videoKinectScale = (float) video.height / KinectPV2.HEIGHTDepth;
   } else {
-    videoKinectScale = video.width / kinect.width;
+    videoKinectScale = (float) video.width / KinectPV2.WIDTHDepth;
   }
-  minimuVideoKinectScale = videoKinectScale;
+  minimumVideoKinectScale = videoKinectScale;
   
   if(videoKinectScale < 1) {
     exit(
@@ -51,52 +51,58 @@ void setup() {
       "Please provide a bigger resolution background video."
     );
   }
-  
-  // TODO: calculate initial kinectAdjustmentOffset in order to center Kinect depth camera frame
 }
 
 void draw() {
   if(video.available()) {
     video.read();
     
-    // get Kinect depth image
-    // HACK: copy() used in order to circumvent a Kinect library IndexOutOfBoundException
-    PImage depthImage = kinect.getDepthImage().copy(); //<>//
+    // get Kinect depth image and flip it
+    // HACK: image is copied because resizing the returned one does not work as should
+    PImage depthImage = kinect.getPointCloudDepthImage().copy();
+    PImage flippedDepthImage = createImage(depthImage.width, depthImage.height, RGB);
+    for (int x = 0 ; x < flippedDepthImage.width; x++) {
+      flippedDepthImage.set(flippedDepthImage.width-x-1,0, depthImage.get(x, 0, 1, depthImage.height));
+    }
+    depthImage = flippedDepthImage;
+    //image(depthImage, 0, 0);
     
     // scale and crop it to fit video size without distorsions
-    depthImage.resize(ceil(kinect.width * videoKinectScale), ceil(kinect.height * videoKinectScale));
+    depthImage.resize(ceil(KinectPV2.WIDTHDepth * videoKinectScale), ceil(KinectPV2.HEIGHTDepth * videoKinectScale));
+    depthImage = depthImage.get(kinectAdjustmentOffset[0], kinectAdjustmentOffset[1], video.width, video.height);
+    //image(depthImage, 0, 0);
     
-    // Mask the video with Kinect depth data
+    // mask the video frame with Kinect depth data
     video.loadPixels();
     depthImage.loadPixels();
-    var currentKinectAdjustmentOffset = Arrays.copyOf(kinectAdjustmentOffset, kinectAdjustmentOffset.length);
     for(int y = 0; y < video.height; y++) {
       for(int x = 0; x < video.width; x++) {
-        var depth = hue(depthImage.pixels[(y - currentKinectAdjustmentOffset[1]) * depthImage.width + (x - currentKinectAdjustmentOffset[0])]);
-        if (depth > depthThreshold) {
+        var depth = depthImage.pixels[y * depthImage.width + x];
+        if (depth == 0xFF000000) {
           video.pixels[y * video.width + x] = color(0);
         }
       }
     }
     video.updatePixels();
+    //video.mask(depthImage);
     
     // displaying the masked video frame
-    // HACK: scaling seems to lower framerate. ATM has been disabled.
     image(video, 0, 0);
   }
   
   // Print debug info onscreen
   if (DEBUG) {
+    textSize(16);
     stroke(0xFF4281A4);
     fill(0xFF4281A4);
     rect(0, 0, 330, 170);
     fill(255);
     text(
       "Video resolution: " + video.width + "x" + video.height + "\n" +
-      "Video resolution: " + kinect.width + "x" + kinect.height + "\n" +
+      "Kinect resolution: " + KinectPV2.WIDTHDepth + "x" + KinectPV2.HEIGHTDepth + "\n" +
       "Video/Kinect scale [s]: " + videoKinectScale + "\n" +
       "Depth threshold [d]: " + depthThreshold + "\n" +
-      "Kinect adjustment offset [k]: " + Arrays.toString(kinectAdjustmentOffset) + "\n" +
+      "Kinect adjustment offset [o]: " + Arrays.toString(kinectAdjustmentOffset) + "\n" +
       "This informations panel can be toggled with [i].",
       10,
       20
@@ -119,7 +125,7 @@ void keyPressed() {
     case 'd':
       configurationMode = ConfigurationMode.DEPTH_THRESHOLD;
       break;
-    case 'k':
+    case 'o':
       configurationMode = ConfigurationMode.KINECT_ADJUSTMENT_OFFSET;
       break;
     case 's':
@@ -129,26 +135,27 @@ void keyPressed() {
   
   if (configurationMode == ConfigurationMode.DEPTH_THRESHOLD) {
     if (keyCode == UP) {
-      depthThreshold++;
+      depthThreshold += depthThresholdDelta;
     } else if (keyCode == DOWN) {
-      depthThreshold--;
+      depthThreshold -= depthThresholdDelta;
     }
+    kinect.setHighThresholdPC(depthThreshold);
   } else if (configurationMode == ConfigurationMode.VIDEO_KINECT_SCALE) {
     if ((keyCode == UP || keyCode == DOWN)) {
       var newVideoKinectScale = ceil((videoKinectScale + (keyCode == UP ? 0.1 : -0.1)) * 10) / 10.0f;
-      if (minimuVideoKinectScale <= newVideoKinectScale) {
+      if (minimumVideoKinectScale <= newVideoKinectScale) {
         videoKinectScale = newVideoKinectScale;
       }
     }
   } else if (configurationMode == ConfigurationMode.KINECT_ADJUSTMENT_OFFSET) {
     if ((keyCode == LEFT || keyCode == RIGHT)) {
-      var newValue = kinectAdjustmentOffset[0] + (keyCode == LEFT ? -1 : 1);
-      if(newValue <= 0 && video.width - kinect.width * videoKinectScale + newValue > 0) {
+      var newValue = kinectAdjustmentOffset[0] + (keyCode == LEFT ? 1 : -1);
+      if(newValue >= 0 && video.width + newValue <= KinectPV2.WIDTHDepth * videoKinectScale) {
         kinectAdjustmentOffset[0] = newValue;
       }
     } else if ((keyCode == UP || keyCode == DOWN)) {
-      var newValue = kinectAdjustmentOffset[1] + (keyCode == UP ? -1 : 1);
-      if(newValue <= 0 && video.height - kinect.height * videoKinectScale + newValue > 0) {
+      var newValue = kinectAdjustmentOffset[1] + (keyCode == UP ? 1 : -1);
+      if(newValue >= 0 && video.height + newValue <= KinectPV2.HEIGHTDepth * videoKinectScale) {
         kinectAdjustmentOffset[1] = newValue;
       }
     }
@@ -156,7 +163,7 @@ void keyPressed() {
 }
 
 void keyReleased() {
-  if(key == 'd' || key == 'k' || key == 's') {
+  if(key == 'd' || key == 'o' || key == 's') {
     configurationMode = null;
   }
 }
@@ -166,7 +173,7 @@ void exit(final String errorMessage) {
 }
 
 void exit(final String errorMessage, final String explanationMessage) {
-  if(video.height < kinect.height) {
+  if(video.height < KinectPV2.HEIGHTDepth) {
     fill(color(0xFFC1666B));
     rect(0, 0, width, height);
     fill(255);
