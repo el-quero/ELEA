@@ -33,8 +33,8 @@ void setup() {
   kinect.init();
   
   // setup video
-  video = new Movie(this, "background.mov");
-  video.loop();
+  video = new Movie(this, "background.mp4");
+  video.play();
   video.read();
   
   // calculating ratio between video and Kinect depth camera resolutions
@@ -88,6 +88,11 @@ void draw() {
     
     // displaying the masked video frame
     image(video, 0, 0);
+
+    // HACK: since video.loop() in the destup code does not work lets manually loop it
+    if(video.duration() - video.time() < 0.05) {
+      video.jump(0);
+    }
   }
   
   // Print debug info onscreen
