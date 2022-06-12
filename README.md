@@ -12,7 +12,7 @@ The software is based on [Processing 4](https://processing.org). To execute it y
 
 Sketch parameters can be found at the top of the sketch code. 
 
-# Todo
+# To do
 
 - [ ] substitute KinectPV2 with [OpenKinect-for-Processing](https://github.com/shiffman/OpenKinect-for-Processing);
 - [ ] find some way to be less CPU-intensive (using GPU?).
