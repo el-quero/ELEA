@@ -11,13 +11,15 @@ Movie video;
 
 // Kinect device
 KinectPV2 kinect;
-volatile int depthThreshold = 3000; // 1000 = 1m
+volatile int depthThreshold = 4500; // 1000 = 1m
 int depthThresholdDelta = 100;
-int[] kinectAdjustmentOffset = {0, 0};
+int[] kinectAdjustmentOffset = {370, 450};
+PImage[] kinectFrames = new PImage[30];
+int kinectFramesPushIndex = 0;
 
 // ratio of Kinect depth camera video size on bacgrkound video size.
 // (> 1 = Kinect is smaller; < 1 = video is smaller)
-float videoKinectScale;
+float videoKinectScale = 5;
 float minimumVideoKinectScale;
 
 void setup() {
@@ -39,13 +41,12 @@ void setup() {
   
   // calculating ratio between video and Kinect depth camera resolutions
   if(video.height - KinectPV2.HEIGHTDepth >= video.width - KinectPV2.WIDTHDepth) {
-    videoKinectScale = (float) video.height / KinectPV2.HEIGHTDepth;
+    minimumVideoKinectScale = (float) video.height / KinectPV2.HEIGHTDepth;
   } else {
-    videoKinectScale = (float) video.width / KinectPV2.WIDTHDepth;
+    minimumVideoKinectScale = (float) video.width / KinectPV2.WIDTHDepth;
   }
-  minimumVideoKinectScale = videoKinectScale;
   
-  if(videoKinectScale < 1) {
+  if(videoKinectScale < minimumVideoKinectScale) {
     exit(
       "Background video size is smaller than Kinect camera one.",
       "Please provide a bigger resolution background video."
@@ -57,16 +58,10 @@ void draw() {
   if(video.available()) {
     video.read();
     
-    // get Kinect depth image and flip it
+    // get Kinect depth image
     // HACK: image is copied because resizing the returned one does not work as should
     PImage depthImage = kinect.getPointCloudDepthImage().copy();
-    PImage flippedDepthImage = createImage(depthImage.width, depthImage.height, RGB);
-    for (int x = 0 ; x < flippedDepthImage.width; x++) {
-      flippedDepthImage.set(flippedDepthImage.width-x-1,0, depthImage.get(x, 0, 1, depthImage.height));
-    }
-    depthImage = flippedDepthImage;
-    //image(depthImage, 0, 0);
-    
+
     // scale and crop it to fit video size without distorsions
     depthImage.resize(ceil(KinectPV2.WIDTHDepth * videoKinectScale), ceil(KinectPV2.HEIGHTDepth * videoKinectScale));
     depthImage = depthImage.get(kinectAdjustmentOffset[0], kinectAdjustmentOffset[1], video.width, video.height);
@@ -84,12 +79,11 @@ void draw() {
       }
     }
     video.updatePixels();
-    //video.mask(depthImage);
     
     // displaying the masked video frame
     image(video, 0, 0);
 
-    // HACK: since video.loop() in the destup code does not work lets manually loop it
+    // HACK: since video.loop() does not work lets manually loop it
     if(video.duration() - video.time() < 0.05) {
       video.jump(0);
     }
